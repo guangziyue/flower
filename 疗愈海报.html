@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>流璃风铃 | 响应式纯白交互版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Noto+Serif+SC:wght@300;400&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #FAFAFA;
+            color: #2c3e50;
+            font-family: 'Noto Serif SC', 'Cormorant Garamond', serif;
+            -webkit-font-smoothing: antialiased;
+            /* 针对移动端优化：阻止下拉刷新和双击缩放 */
+            touch-action: none; 
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            box-sizing: border-box;
+            /* 适配手机刘海屏的安全区域 */
+            padding: max(6vh, env(safe-area-inset-top)) max(5vw, env(safe-area-inset-right)) max(6vh, env(safe-area-inset-bottom)) max(5vw, env(safe-area-inset-left));
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .header { text-align: left; }
+        .header h1 {
+            /* 响应式字体：最小 1.8rem，首选 6vw，最大 2.5rem */
+            font-size: clamp(1.8rem, 6vw, 2.5rem);
+            font-weight: 300;
+            letter-spacing: 0.1em;
+            margin: 0 0 8px 0;
+            color: #1a252f;
+        }
+        .header p {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(0.75rem, 2.5vw, 0.9rem);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin: 0;
+            color: #7f8c8d;
+        }
+
+        .interaction-hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: clamp(0.6rem, 2vw, 0.75rem);
+            letter-spacing: 0.3em;
+            color: rgba(44, 62, 80, 0.4);
+            border: 1px solid rgba(44, 62, 80, 0.15);
+            padding: 8px 18px;
+            border-radius: 30px;
+            white-space: nowrap;
+        }
+
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-size: clamp(0.7rem, 2vw, 0.8rem);
+            line-height: 1.8;
+            letter-spacing: 0.05em;
+        }
+        .poetry { opacity: 0.85; }
+
+        /* =========================================
+           隐藏式控制面板 UI 样式 (触控优化版)
+           ========================================= */
+        
+        #ui-toggle-btn {
+            position: absolute;
+            top: max(5vh, env(safe-area-inset-top));
+            right: max(4vw, env(safe-area-inset-right));
+            z-index: 30;
+            pointer-events: auto;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 15px; /* 增大触控热区，防止误触 */
+            opacity: 0.3;
+            transition: opacity 0.3s ease;
+            outline: none;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        #ui-toggle-btn:hover, #ui-toggle-btn:active { opacity: 0.8; }
+
+        #ui-toggle-btn span {
+            display: block;
+            width: 22px;
+            height: 1.5px;
+            background-color: #2c3e50;
+            transition: all 0.3s ease;
+        }
+
+        .hidden-control-panel {
+            position: absolute;
+            top: max(10vh, env(safe-area-inset-top));
+            right: -280px; 
+            z-index: 20;
+            pointer-events: auto;
+            width: 200px; /* 稍微加宽以适应手指操作 */
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            border-radius: 16px 0 0 16px;
+            padding: 30px 20px;
+            box-shadow: -5px 10px 40px rgba(0, 0, 0, 0.04);
+            display: flex;
+            flex-direction: column;
+            gap: 25px; /* 增加选项间距，防止误触 */
+            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1); 
+        }
+
+        .hidden-control-panel.active { right: 0; }
+
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .control-item label {
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+            color: #5a6c7d;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Helvetica Neue', sans-serif;
+            font-weight: 500;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus { outline: none; }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 2px;
+            cursor: pointer;
+            background: rgba(44, 62, 80, 0.15);
+            border-radius: 2px;
+        }
+        
+        /* 针对手机端放大滑块的拇指触控点 */
+        input[type=range]::-webkit-slider-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #2c3e50;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -7px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            transition: transform 0.2s;
+        }
+        input[type=range]::-webkit-slider-thumb:active { transform: scale(1.3); }
+    </style>
+</head>
+<body>
+
+    <div class="ui-layer">
+        <div class="header">
+            <h1>风铃与水语</h1>
+            <p>Interactive Fluid Canvas</p>
+        </div>
+        <div class="interaction-hint">
+            [ 滑动水面 · 惊动飞蝶 ]
+        </div>
+        <div class="footer">
+            <div class="poetry">在线条的张力中<br>寻找流动的春日</div>
+            <div style="text-align: right; opacity: 0.5;">VOL.04<br>SPRING</div>
+        </div>
+    </div>
+
+    <button id="ui-toggle-btn" aria-label="Toggle Controls">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+
+    <div class="hidden-control-panel" id="control-panel">
+        <div class="control-item">
+            <label><span>🦋 蝴蝶数量</span> <span id="val-count">8</span></label>
+            <input type="range" id="slider-count" min="2" max="25" value="8">
+        </div>
+        <div class="control-item">
+            <label><span>🌊 水波敏感度</span> <span id="val-force">0.15</span></label>
+            <input type="range" id="slider-force" min="0.05" max="0.4" step="0.01" value="0.15">
+        </div>
+        <div class="control-item">
+            <label><span>🔍 蝴蝶尺寸</span> <span id="val-size">1.0x</span></label>
+            <input type="range" id="slider-size" min="0.5" max="2.0" step="0.1" value="1.0">
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        const toggleBtn = document.getElementById('ui-toggle-btn');
+        const controlPanel = document.getElementById('control-panel');
+        
+        toggleBtn.addEventListener('click', () => {
+            controlPanel.classList.toggle('active');
+        });
+
+        // 监听点击面板外部自动收起面板 (移动端友好体验)
+        document.addEventListener('click', (e) => {
+            if (!controlPanel.contains(e.target) && e.target !== toggleBtn && !toggleBtn.contains(e.target)) {
+                controlPanel.classList.remove('active');
+            }
+        });
+
+        let springLines = [];
+        let butterflies = [];
+        const numLines = 45;
+
+        let countSlider, forceSlider, sizeSlider;
+        let countLabel, forceLabel, sizeLabel;
+
+        function setup() {
+            let canvas = createCanvas(windowWidth, windowHeight);
+            canvas.parent('canvas-container');
+            
+            // 核心：开启视网膜屏幕高清适配，防止手机端线条模糊
+            pixelDensity(displayDensity());
+            
+            initLines();
+
+            countSlider = document.getElementById('slider-count');
+            forceSlider = document.getElementById('slider-force');
+            sizeSlider = document.getElementById('slider-size');
+            
+            countLabel = document.getElementById('val-count');
+            forceLabel = document.getElementById('val-force');
+            sizeLabel = document.getElementById('val-size');
+
+            updateButterflies(parseInt(countSlider.value));
+        }
+
+        function draw() {
+            background('#FAFAFA');
+
+            let currentTargetCount = parseInt(countSlider.value);
+            let currentWaveForce = parseFloat(forceSlider.value);
+            let currentScale = parseFloat(sizeSlider.value);
+
+            countLabel.innerText = currentTargetCount;
+            forceLabel.innerText = currentWaveForce.toFixed(2);
+            sizeLabel.innerText = currentScale.toFixed(1) + 'x';
+
+            updateButterflies(currentTargetCount);
+
+            for (let line of springLines) {
+                line.update(currentWaveForce);
+                line.display();
+            }
+
+            for (let b of butterflies) {
+                b.update();
+                b.display(currentScale);
+            }
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            initLines();
+        }
+
+        function initLines() {
+            springLines = [];
+            let spacing = height / (numLines + 1);
+            for (let i = 0; i <= numLines; i++) {
+                springLines.push(new SpringLine(i * spacing));
+            }
+        }
+
+        function updateButterflies(target) {
+            while (butterflies.length < target) {
+                butterflies.push(new ExquisiteButterfly());
+            }
+            while (butterflies.length > target) {
+                butterflies.pop();
+            }
+        }
+
+        class SpringLine {
+            constructor(y) {
+                this.baseY = y;
+                this.points = [];
+                // 根据屏幕宽度自适应节点数，确保横竖屏物理效果一致
+                this.segments = Math.floor(width / 20) + 10;
+                for (let i = 0; i <= this.segments; i++) {
+                    let x = map(i, 0, this.segments, 0, width);
+                    this.points.push({ x: x, y: y, vy: 0 });
+                }
+            }
+
+            update(forceParam) {
+                for (let i = 1; i < this.segments; i++) {
+                    let p = this.points[i];
+                    let noiseOffset = (noise(p.x * 0.005, this.baseY * 0.005, frameCount * 0.005) - 0.5) * 20;
+                    let targetY = this.baseY + noiseOffset;
+
+                    // 兼容鼠标和触控的交互
+                    if (mouseIsPressed || touches.length > 0) {
+                        // 使用 mouseX/Y，P5 默认会将单指 touch 映射到这里
+                        let d = dist(mouseX, mouseY, p.x, p.y);
+                        let radius = map(forceParam, 0.05, 0.4, 50, 150);
+                        if (d < radius) {
+                            let deltaY = mouseY - pmouseY;
+                            let influence = (1 - d / radius) * forceParam;
+                            p.vy += deltaY * influence;
+                        }
+                    }
+
+                    let springForce = (targetY - p.y) * 0.03;
+                    p.vy += springForce;
+                    p.vy *= 0.92;
+                    p.y += p.vy;
+                }
+            }
+
+            display() {
+                noFill();
+                stroke(160, 185, 210, 120); 
+                strokeWeight(1.2);
+                beginShape();
+                curveVertex(this.points[0].x, this.points[0].y);
+                for (let p of this.points) { curveVertex(p.x, p.y); }
+                curveVertex(this.points[this.segments].x, this.points[this.segments].y);
+                endShape();
+            }
+        }
+
+        class ExquisiteButterfly {
+            constructor() {
+                this.pos = createVector(random(width), random(height));
+                this.vel = p5.Vector.random2D().mult(random(0.5, 1.5));
+                this.acc = createVector(0, 0);
+                this.baseSize = random(12, 22);
+                this.angle = this.vel.heading();
+                this.flapPhase = random(TWO_PI);
+                this.flapSpeed = random(0.1, 0.2);
+                this.noiseOffset = random(1000);
+            }
+
+            update() {
+                let n = noise(this.pos.x * 0.01, this.pos.y * 0.01, this.noiseOffset);
+                let angleOffset = map(n, 0, 1, -PI/4, PI/4);
+                let desiredAngle = this.vel.heading() + angleOffset * 0.1;
+                
+                let desiredVel = p5.Vector.fromAngle(desiredAngle).mult(1.5);
+                let steer = p5.Vector.sub(desiredVel, this.vel);
+                steer.limit(0.05);
+                this.acc.add(steer);
+
+                if (mouseIsPressed || touches.length > 0) {
+                    let mouse = createVector(mouseX, mouseY);
+                    let d = p5.Vector.dist(this.pos, mouse);
+                    if (d < 150) {
+                        let repel = p5.Vector.sub(this.pos, mouse);
+                        repel.normalize();
+                        repel.mult(map(d, 0, 150, 0.5, 0));
+                        this.acc.add(repel);
+                        this.flapPhase += 0.3; 
+                    }
+                }
+
+                this.vel.add(this.acc);
+                this.vel.limit(2.5);
+                this.pos.add(this.vel);
+                this.acc.mult(0);
+
+                this.angle = lerp(this.angle, this.vel.heading(), 0.1);
+                this.flapPhase += this.flapSpeed;
+                this.noiseOffset += 0.01;
+
+                if (this.pos.x < -30) this.pos.x = width + 30;
+                if (this.pos.x > width + 30) this.pos.x = -30;
+                if (this.pos.y < -30) this.pos.y = height + 30;
+                if (this.pos.y > height + 30) this.pos.y = -30;
+            }
+
+            display(scaleModifier) { 
+                let currentSize = this.baseSize * scaleModifier;
+
+                push();
+                translate(this.pos.x, this.pos.y);
+                rotate(this.angle + PI/2); 
+
+                drawingContext.shadowOffsetX = 0;
+                drawingContext.shadowOffsetY = 8;
+                drawingContext.shadowBlur = 15;
+                drawingContext.shadowColor = 'rgba(100, 130, 160, 0.2)';
+
+                let flap = cos(this.flapPhase); 
+
+                fill(135, 185, 230, 190); 
+                stroke(70, 120, 170, 220); 
+                strokeWeight(0.8);
+
+                push();
+                scale(flap, 1); 
+                beginShape();
+                vertex(0, 0); 
+                bezierVertex(-currentSize * 1.5, -currentSize * 1.2, -currentSize * 1.8, currentSize * 0.2, -currentSize * 0.5, currentSize * 0.8);
+                bezierVertex(-currentSize * 0.8, currentSize * 1.5, -currentSize * 0.2, currentSize * 1.8, 0, currentSize);
+                endShape(CLOSE);
+                pop();
+
+                push();
+                scale(flap, 1);
+                beginShape();
+                vertex(0, 0);
+                bezierVertex(currentSize * 1.5, -currentSize * 1.2, currentSize * 1.8, currentSize * 0.2, currentSize * 0.5, currentSize * 0.8);
+                bezierVertex(currentSize * 0.8, currentSize * 1.5, currentSize * 0.2, currentSize * 1.8, 0, currentSize);
+                endShape(CLOSE);
+                pop();
+
+                drawingContext.shadowBlur = 0; 
+                noStroke();
+                fill(50, 70, 90, 200);
+                ellipse(0, 0, currentSize * 0.2, currentSize * 1.2);
+                pop();
+            }
+        }
+    </script>
+</body>
+</html>
